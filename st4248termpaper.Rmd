@@ -1,0 +1,646 @@
+---
+title: "ST4248 Term Paper"
+author: "Harry Chang"
+date: "2023-04-11"
+output: pdf_document
+---
+
+```{r}
+setwd("/Users/harrychang/Desktop/Y3S2/ST4248/termpaper")
+data = read.csv("vgsaleswratings.csv")
+data
+```
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(xgboost)
+```
+
+```{r}
+data_clean <- data %>% drop_na()
+```
+
+```{r}
+# Select only the relevant columns
+data_clean <- data_clean %>% select(Critic_Score, User_Score, Global_Sales)
+
+data_clean$User_Score <- as.numeric(as.character(data_clean$User_Score))
+data_clean$Critic_Score <- as.numeric(as.character(data_clean$Critic_Score))
+
+```
+
+
+```{r}
+# Set the seed for reproducibility
+set.seed(123)
+
+# Define k-fold cross-validation parameters
+k <- 10
+folds <- createFolds(data_clean$Global_Sales, k = k)
+```
+
+```{r}
+# Initialize metrics
+rmse_multi <- vector()
+r2_multi <- vector()
+mae_multi <- vector()
+```
+
+```{r}
+# Perform k-fold cross-validation
+for (i in seq_along(folds)) {
+  # Split data into training and testing sets
+  train <- data_clean[-folds[[i]], ]
+  test <- data_clean[folds[[i]], ]
+
+  # Fit multiple regression model
+  model_multi <- lm(Global_Sales ~ Critic_Score + User_Score, data = train)
+
+  # Make predictions
+  preds_multi <- predict(model_multi, test)
+
+  # Calculate metrics
+  rmse_multi[i] <- sqrt(mean((test$Global_Sales - preds_multi)^2))
+  r2_multi[i] <- 1 - (sum((test$Global_Sales - preds_multi)^2) / sum((test$Global_Sales - mean(test$Global_Sales))^2))
+  mae_multi[i] <- mean(abs(test$Global_Sales - preds_multi))
+}
+```
+
+```{r}
+# Average metrics across k-folds
+mean_rmse_multi <- mean(rmse_multi)
+mean_r2_multi <- mean(r2_multi)
+mean_mae_multi <- mean(mae_multi)
+```
+
+```{r}
+mean_rmse_multi
+mean_r2_multi
+mean_mae_multi
+```
+
+```{r}
+# Initialize metrics
+rmse_rf <- vector()
+r2_rf <- vector()
+mae_rf <- vector()
+
+# Perform k-fold cross-validation
+for (i in seq_along(folds)) {
+  # Split data into training and testing sets
+  train <- data_clean[-folds[[i]], ]
+  test <- data_clean[folds[[i]], ]
+
+  # Fit random forest model
+  model_rf <- randomForest(Global_Sales ~ Critic_Score + User_Score, data = train)
+
+  # Make predictions
+  preds_rf <- predict(model_rf, test)
+
+  # Calculate metrics
+  rmse_rf[i] <- sqrt(mean((test$Global_Sales - preds_rf)^2))
+  r2_rf[i] <- 1 - (sum((test$Global_Sales - preds_rf)^2) / sum((test$Global_Sales - mean(test$Global_Sales))^2))
+  mae_rf[i] <- mean(abs(test$Global_Sales - preds_rf))
+}
+```
+
+```{r}
+# Average metrics across k-folds
+mean_rmse_rf <- mean(rmse_rf)
+mean_r2_rf <- mean(r2_rf)
+mean_mae_rf <- mean(mae_rf)
+```
+
+```{r}
+mean_rmse_rf
+mean_r2_rf
+mean_mae_rf
+```
+
+```{r}
+# Initialize metrics
+rmse_xgb <- vector()
+r2_xgb <- vector()
+mae_xgb <- vector()
+
+```
+
+```{r}
+# Perform k-fold cross-validation
+for (i in seq_along(folds)) {
+  # Split data into training and testing sets
+  train <- data_clean[-folds[[i]], ]
+  test <- data_clean[folds[[i]], ]
+
+  # Prepare data for XGBoost
+  train_matrix <- xgb.DMatrix(data.matrix(train[, c("Critic_Score", "User_Score")]), label = train$Global_Sales)
+  test_matrix <- xgb.DMatrix(data.matrix(test[, c("Critic_Score", "User_Score")]), label = test$Global_Sales)
+
+  # Set XGBoost parameters
+  xgb_params <- list(
+    objective = "reg:squarederror",
+    eta = 0.1,
+    max_depth = 6,
+    min_child_weight = 1,
+    subsample = 1,
+    colsample_bytree = 1
+  )
+
+  # Train XGBoost model
+  model_xgb <- xgb.train(params = xgb_params, data = train_matrix, nrounds = 100)
+
+  # Make predictions
+  preds_xgb <- predict(model_xgb, test_matrix)
+
+  # Calculate metrics
+  rmse_xgb[i] <- sqrt(mean((test$Global_Sales - preds_xgb)^2))
+  r2_xgb[i] <- 1 - (sum((test$Global_Sales - preds_xgb)^2) / sum((test$Global_Sales - mean(test$Global_Sales))^2))
+  mae_xgb[i] <- mean(abs(test$Global_Sales - preds_xgb))
+}
+
+# Average metrics across k-folds
+mean_rmse_xgb <- mean(rmse_xgb)
+mean_r2_xgb <- mean(r2_xgb)
+mean_mae_xgb <- mean(mae_xgb)
+```
+
+```{r}
+mean_rmse_xgb
+mean_r2_xgb
+mean_mae_xgb
+```
+
+```{r}
+# Print metrics for all models
+cat("Multiple Regression:\nRMSE:", mean_rmse_multi, "\nR-squared:", mean_r2_multi, "\nMAE:", mean_mae_multi, "\n\n")
+cat("Random Forest:\nRMSE:", mean_rmse_rf, "\nR-squared:", mean_r2_rf, "\nMAE:", mean_mae_rf, "\n\n")
+cat("XGBoost:\nRMSE:", mean_rmse_xgb, "\nR-squared:", mean_r2_xgb, "\nMAE:", mean_mae_xgb, "\n")
+
+```
+
+```{r}
+# Load libraries
+library(tidyverse)
+library(caret)
+library(randomForest)
+library(xgboost)
+
+# Normalize the predictors
+normalize <- function(x) {
+  return ((x - min(x)) / (max(x) - min(x)))
+}
+
+data_clean$Critic_Score <- normalize(data_clean$Critic_Score)
+data_clean$User_Score <- normalize(data_clean$User_Score)
+
+# Train-test split
+set.seed(42)
+train_index <- createDataPartition(data_clean$Global_Sales, p = 0.8, list = FALSE)
+train_set <- data_clean[train_index,]
+test_set <- data_clean[-train_index,]
+
+# Multiple Regression with k-fold cross-validation
+lm_model <- train(Global_Sales ~ Critic_Score + User_Score,
+                  data = train_set,
+                  method = "lm",
+                  trControl = trainControl(method = "cv", number = 10))
+
+lm_pred <- predict(lm_model, test_set)
+lm_performance <- postResample(lm_pred, test_set$Global_Sales)
+
+# Random Forest with k-fold cross-validation
+rf_model <- train(Global_Sales ~ Critic_Score + User_Score,
+                  data = train_set,
+                  method = "rf",
+                  trControl = trainControl(method = "cv", number = 10))
+
+rf_pred <- predict(rf_model, test_set)
+rf_performance <- postResample(rf_pred, test_set$Global_Sales)
+
+# XGBoost with k-fold cross-validation
+xgb_model <- train(Global_Sales ~ Critic_Score + User_Score,
+                   data = train_set,
+                   method = "xgbTree",
+                   trControl = trainControl(method = "cv", number = 10))
+
+xgb_pred <- predict(xgb_model, test_set)
+xgb_performance <- postResample(xgb_pred, test_set$Global_Sales)
+
+# Evaluate the models
+cat("Multiple Regression:\n", lm_performance, "\n\n",
+    "Random Forest:\n", rf_performance, "\n\n",
+    "XGBoost:\n", xgb_performance)
+```
+
+
+```{r}
+# Split data into training and testing sets
+set.seed(123)
+trainIndex <- createDataPartition(data_clean$Global_Sales, p = 0.8, list = FALSE)
+train_set <- data_clean[trainIndex, ]
+test_set <- data_clean[-trainIndex, ]
+```
+
+```{r}
+# Load required libraries
+library(rBayesianOptimization)
+library(randomForest)
+```
+
+```{r}
+# Define the objective function
+objective_function <- function(mtry) {
+  set.seed(123)
+  model <- randomForest(Global_Sales ~ Critic_Score + User_Score, data = train_set, mtry = floor(mtry))
+  rmse <- sqrt(mean((test_set$Global_Sales - predict(model, newdata = test_set))^2))
+  
+  # The objective function should be minimized, so we return -RMSE
+  return(list(Score = -rmse, Pred = rmse))
+}
+```
+
+```{r}
+# Create a random search grid for mtry values
+mtry_random_grid <- data.frame(.mtry = sample(2:10, 10, replace = TRUE))
+```
+
+```{r}
+# Set up cross-validated random search
+set.seed(123)
+rf_random_search <- train(
+  Global_Sales ~ Critic_Score + User_Score, 
+  data = train_set, 
+  method = "rf",
+  tuneGrid = mtry_random_grid,
+  trControl = trainControl(
+    method = "cv", 
+    number = 5, 
+    search = "random",
+    verboseIter = TRUE
+  )
+)
+```
+
+```{r}
+# Load required libraries
+library(ggplot2)
+library(FactoMineR)
+
+# Prepare the dataset
+data_pca <- data_clean %>%
+  select(-Global_Sales) %>%
+  scale() %>%
+  as.data.frame()
+```
+
+```{r}
+# Perform PCA
+pca <- PCA(data_pca, scale.unit = TRUE)
+
+# Plot the PCA results
+fviz_pca_ind(
+  pca,
+  geom = "point",
+  pointsize = 2,
+  label = "none",
+  palette = "jco",
+  title = "PCA of Video Game Data"
+)
+```
+
+```{r}
+# Load required libraries
+library(dplyr)
+library(cluster)
+library(factoextra)
+```
+
+```{r}
+# Convert categorical variables to numeric
+data_numeric <- data_clean %>%
+  mutate(across(where(is.factor), as.numeric)) %>%
+  select_if(~ !is.character(.))
+
+# Remove rows with missing values
+data_complete <- na.omit(data_numeric)
+
+# Scale the dataset
+data_scaled <- scale(data_complete)
+```
+
+```{r}
+# Determine the optimal number of clusters using the elbow method
+fviz_nbclust(data_scaled, kmeans, method = "wss")
+```
+
+```{r}
+
+# Perform k-means clustering (replace K with the optimal number of clusters)
+K <- 4
+kmeans_result <- kmeans(data_scaled, centers = K, nstart = 25)
+```
+
+```{r}
+# Visualize the clusters using PCA
+pca_data <- prcomp(data_scaled, scale. = TRUE)
+fviz_cluster(kmeans_result, data = data_scaled, stand = TRUE, geom = "point", ggtheme = theme_minimal())
+```
+
+```{r}
+publisher_sales <- data_clean %>%
+  group_by(Publisher) %>%
+  summarize(Total_Sales = sum(Global_Sales)) %>%
+  arrange(desc(Total_Sales))
+```
+
+```{r}
+ggplot(publisher_sales, aes(x = Total_Sales)) +
+  geom_histogram(fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Total Sales by Publisher", x = "Total Sales", y = "Frequency")
+```
+
+```{r}
+# Scale the data
+publisher_sales_scaled <- scale(publisher_sales[, 2])
+
+# Determine the optimal number of clusters
+wss <- (nrow(publisher_sales) - 1) * sum(apply(publisher_sales_scaled, 2, var))
+for (i in 2:10) wss[i] <- sum(kmeans(publisher_sales_scaled, centers = i)$withinss)
+plot(1:10, wss, type = "b", xlab = "Number of Clusters", ylab = "Within groups sum of squares")
+
+```
+
+```{r}
+# Based on the elbow plot, let's choose 3 clusters
+set.seed(123)
+kmeans_result <- kmeans(publisher_sales_scaled, centers = 3)
+
+# Add cluster labels to the original dataframe
+publisher_sales$Cluster <- as.factor(kmeans_result$cluster)
+```
+
+```{r}
+ggplot(publisher_sales, aes(x = Total_Sales, y = Publisher, color = Cluster)) +
+  geom_point(size = 4) +
+  labs(title = "Segmentation of Publishers by Total Sales", x = "Total Sales", y = "Publisher")
+```
+
+```{r}
+publisher_sales %>%
+  group_by(Cluster) %>%
+  summarize(Avg_Sales = mean(Total_Sales), Num_Games = n()) %>%
+  arrange(desc(Avg_Sales))
+```
+
+```{r}
+# Convert categorical variables to factors
+data_clean$Rating <- as.factor(data_clean$Rating)
+data_clean$Genre <- as.factor(data_clean$Genre)
+data_clean$Platform <- as.factor(data_clean$Platform)
+
+# Create a binary variable for success of sales
+data_clean$Success <- ifelse(data_clean$Global_Sales > 1, 1, 0)
+```
+
+```{r}
+# Split the data into training and test sets
+set.seed(123)
+trainIndex <- createDataPartition(data_clean$Success, p = 0.8, list = FALSE)
+data_train <- data_clean[trainIndex, ]
+data_test <- data_clean[-trainIndex, ]
+
+```
+
+```{r}
+# Fit the logistic regression model using cross-validation
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+glm_fit <- train(Success ~ Critic_Score + User_Score + Genre + Platform + Rating,
+                 data = data_train, method = "glm", family = "binomial", trControl = ctrl)
+```
+
+```{r}
+data_test$User_Score <- factor(data_test$User_Score, levels = levels(data_test$User_Score))
+
+# Make predictions on the test set
+glm_pred <- predict(glm_fit, newdata = data_test)
+```
+
+```{r}
+# Evaluate the performance of the model
+confusionMatrix(data = glm_pred, reference = data_test$Success)
+```
+
+```{r}
+# Load required libraries
+library(tidyverse)
+library(caret)
+
+# Remove rows with missing values
+data_clean <- data %>% drop_na()
+
+# Define success as games in the top 25% of global sales
+success_cutoff <- quantile(data_clean$Global_Sales, 0.75)
+data_clean$Success <- ifelse(data_clean$Global_Sales >= success_cutoff, 1, 0)
+
+# Convert relevant variables to factors
+data_clean$Genre <- as.factor(data_clean$Genre)
+data_clean$Publisher <- as.factor(data_clean$Publisher)
+data_clean$Rating <- as.factor(data_clean$Rating)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Create train-test split
+train_index <- createDataPartition(data_clean$Success, p = 0.7, list = FALSE)
+train_data <- data_clean[train_index, ]
+test_data <- data_clean[-train_index, ]
+
+# Define formula for logistic regression
+formula <- Success ~ Critic_Score + User_Score + Genre + Publisher + Rating
+
+```
+
+```{r}
+levels(train_data$User_Score)
+levels(test_data$User_Score)
+
+```
+
+```{r}
+# Combine train and test sets
+all_data <- rbind(train_data, test_data)
+
+# Convert User_Score to factor with all possible levels
+all_data$User_Score <- factor(all_data$User_Score, levels = c("0.5", "0.6", "0.7", "0.8", "0.9", "1.0"))
+# Convert relevant variables to factors
+all_data$Genre <- as.factor(all_data$Genre)
+all_data$Publisher <- as.factor(all_data$Publisher)
+all_data$Rating <- as.factor(all_data$Rating)
+all_data$User_Score <- as.factor(all_data$User_Score)
+
+# Split into train and test sets again
+train_index <- createDataPartition(data_clean$Success, p = 0.7, list = FALSE)
+train_data <- all_data[train_index, ]
+test_data <- all_data[-train_index, ]
+
+# Fit logistic regression model on train data
+glm_model <- glm(Success ~ Critic_Score + User_Score + Genre + Publisher + Rating, data = train_data, family = "binomial")
+
+# Predict success on test data
+glm_pred <- predict(glm_model, newdata = test_data)
+```
+
+
+```{r}
+
+# Predict success on test data
+glm_pred <- predict(glm_model, newdata = test_data)
+
+# Evaluate model performance
+confusionMatrix(table(glm_pred, test_data$Success))
+```
+
+```{r}
+# Filter out rows with missing values
+clean_data <- data %>%
+  drop_na()
+
+# Convert the Publisher variable to a factor
+clean_data$Publisher <- as.factor(clean_data$Publisher)
+```
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(car)
+```
+
+```{r}
+# Filter out rows with missing values
+clean_data <- data %>%
+  filter(!is.na(Critic_Score) & !is.na(User_Score) & !is.na(Rating) & !is.na(Publisher))
+
+# Convert categorical variable 'Publisher' to dummy variables
+publisher_dummies <- model.matrix(~Publisher-1, data=clean_data)
+
+# Combine the original dataset with the new dummy variables
+clean_data_with_dummies <- cbind(clean_data, publisher_dummies)
+```
+
+```{r}
+# Build the model using Global_Sales as the dependent variable and all the publisher dummy variables as predictors
+model <- lm(Global_Sales ~ ., data=clean_data_with_dummies[, !(colnames(clean_data_with_dummies) %in% c("Name", "Platform", "Year_of_Release", "Genre", "Publisher", "NA_Sales", "EU_Sales", "JP_Sales", "Other_Sales", "Critic_Count", "User_Count", "Developer", "Rating", "User_Score", "Critic_Score"))])
+
+# Display the model summary
+summary(model)
+```
+
+```{r}
+
+
+# Extract the coefficients of the publishers and sort them by effect on sales
+publisher_coefficients <- data.frame(Publisher = colnames(publisher_dummies), Coefficient = coef(model)[-1])
+publisher_coefficients_sorted <- publisher_coefficients[order(publisher_coefficients$Coefficient, decreasing = TRUE),]
+
+# Plot the top 10 publishers
+top_publishers <- head(publisher_coefficients_sorted, 10)
+# Remove the word "Publisher" from the variable names
+top_publishers$Publisher <- gsub("Publisher", "", top_publishers$Publisher)
+
+ggplot(top_publishers, aes(x=reorder(Publisher, Coefficient), y=Coefficient)) +
+  geom_bar(stat="identity", fill="steelblue") +
+  geom_text(aes(label = round(Coefficient,3), hjust = 1.2), colour = "white")+
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 10 Publishers by Impact on Global Sales",
+       x = "Publisher",
+       y = "Regression Coefficient")
+```
+
+```{r}
+# Extract the top 3 publishers
+top_3_publishers <- head(publisher_coefficients_sorted$Publisher, 3)
+```
+
+```{r}
+# Remove the word "Publisher" from the variable names
+top_3_publishers <- gsub("Publisher", "", top_3_publishers)
+
+# Filter the dataset for the top 3 publishers
+top_3_publishers_data <- clean_data %>%
+  filter(Publisher %in% top_3_publishers)
+```
+
+```{r}
+# Select the top 10 games for each publisher
+top_10_games_per_publisher <- top_3_publishers_data %>%
+  group_by(Publisher) %>%
+  top_n(10, Global_Sales)
+```
+
+```{r}
+#top_10_games_per_publisher$Publisher <- gsub("[^[:alnum:]_]", "_", top_10_games_per_publisher$Publisher)
+#top_10_games_per_publisher$Publisher <- gsub(" ", "_", top_10_games_per_publisher$Publisher)
+# Plot the top 10 games for each of the top 3 publishers
+ggplot(top_10_games_per_publisher, aes(x=reorder(Name, Global_Sales), y=Global_Sales, fill=Publisher)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  facet_wrap(~Publisher, scales = "free", ncol = 1) +
+  theme_minimal() +
+  #geom_text(aes(label = round(Global_Sales,3), hjust = 1.2), colour = "white")+
+  labs(title = "Top 10 Games by Global Sales for Top 3 Publishers",
+       x = "Game",
+       y = "Global Sales") +
+  theme(legend.position = "none")
+```
+
+```{r}
+library(lme4)
+install.packages("lmerTest")
+library(lmerTest)
+```
+
+```{r}
+# Build a mixed-effects model with Global_Sales as the dependent variable, Platform, and Genre as fixed effects, and Publisher as a random effect
+mixed_model <- lmer(Global_Sales ~ Platform + Genre + (1|Publisher), data=clean_data)
+```
+
+```{r}
+# Display the model summary
+summary(mixed_model)
+```
+
+```{r}
+# Perform an ANOVA on the mixed-effects model
+anova(mixed_model)
+```
+
+```{r}
+install.packages("DHARMa")
+library(DHARMa)
+```
+
+```{r}
+# Create a DHARMa object from the mixed model
+mixed_model_dharma <- createDHARMa(mixed_model, observedResponse = clean_data$Global_Sales)
+```
+
+```{r}
+fitted_values <- fitted(mixed_model)
+residuals <- residuals(mixed_model)
+
+plot(fitted_values, residuals, main = "Residuals vs Fitted Values",
+     xlab = "Fitted Values", ylab = "Residuals")
+abline(h = 0, col = "red")
+```
+
+```{r}
+qqnorm(residuals, main = "Q-Q Plot of Residuals")
+qqline(residuals, col = "red")
+```
+
